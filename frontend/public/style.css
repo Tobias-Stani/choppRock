@@ -107,6 +107,7 @@ label { font-weight: 600; font-size: 0.95rem; display: block; margin-bottom: 6px
 .swal2-popup { font-family: var(--font) !important; border-radius: 14px !important; color: var(--ink) !important; }
 .swal2-title { font-stretch: 75%; font-weight: 900 !important; color: var(--ink) !important; }
 .swal2-styled.swal2-confirm { background: var(--ink) !important; border-radius: var(--radius) !important; font-weight: 700 !important; }
+.swal2-styled.swal2-confirm.swal-danger { background: var(--red) !important; }
 .swal2-styled.swal2-cancel { background: transparent !important; color: var(--ink) !important; border: 2px solid var(--line) !important; border-radius: var(--radius) !important; font-weight: 700 !important; }
 .swal2-icon.swal2-success { border-color: var(--teal) !important; color: var(--teal) !important; }
 .swal2-icon.swal2-success [class^="swal2-success-line"] { background-color: var(--teal) !important; }

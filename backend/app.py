@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import Cookie, Depends, FastAPI, File, HTTPException, Response, UploadFile
@@ -68,9 +68,25 @@ def require_admin(admin: str | None = Cookie(None)):
         raise HTTPException(401, "Iniciá sesión como administrador.")
 
 
+def closes_at():
+    return get_setting("closes_at") or None  # ISO en UTC, o None si no hay cierre
+
+
+def is_closed():
+    c = closes_at()
+    return bool(c) and datetime.fromisoformat(c) <= datetime.now(timezone.utc)
+
+
+CLOSED = "La lista de este mes ya cerró. Esperá la próxima."
+
+
 def require_client(session: str | None = Cookie(None), admin: str | None = Cookie(None)):
-    if not (same(session, sign("client:" + client_code())) or same(admin, sign("admin"))):
+    if same(admin, sign("admin")):
+        return  # el admin entra aunque esté cerrado
+    if not same(session, sign("client:" + client_code())):
         raise HTTPException(401, "Ingresá el código de acceso.")
+    if is_closed():
+        raise HTTPException(403, CLOSED)
 
 
 def has_catalog():
@@ -118,10 +134,18 @@ def save(rows):
 
 @app.post("/api/login")
 def login(body: Secret, response: Response):
+    if is_closed():
+        raise HTTPException(403, CLOSED)
     if not same(body.value.strip(), client_code()):
         raise HTTPException(401, "Ese código no es correcto. Pedíselo a la disquería.")
     response.set_cookie("session", sign("client:" + client_code()), httponly=True, samesite="lax", max_age=MONTH)
     return {"ok": True}
+
+
+@app.get("/api/estado")
+def estado():
+    # público: la pantalla de ingreso muestra hasta cuándo está abierta la lista
+    return {"closes_at": closes_at(), "closed": is_closed()}
 
 
 @app.post("/api/logout")
@@ -184,7 +208,8 @@ def admin_logout(response: Response):
 @app.get("/api/admin/status", dependencies=[Depends(require_admin)])
 def admin_status():
     res = {"client_code": client_code(), "filename": get_setting("filename"),
-           "uploaded_at": get_setting("uploaded_at"), "total": 0, "media": [], "genres": 0}
+           "uploaded_at": get_setting("uploaded_at"), "total": 0, "media": [], "genres": 0,
+           "closes_at": closes_at(), "closed": is_closed()}
     if has_catalog():
         con = db()
         res["total"] = con.execute("SELECT COUNT(*) FROM discos").fetchone()[0]
@@ -203,8 +228,18 @@ def upload(file: UploadFile = File(...)):
     if not rows:
         raise HTTPException(400, "El Excel no tiene discos. Revisá que sea la lista correcta.")
     save(rows)
-    set_settings(filename=file.filename, uploaded_at=datetime.now().isoformat(timespec="minutes"))
+    set_settings(filename=file.filename, uploaded_at=datetime.now(timezone.utc).isoformat(timespec="minutes"))
     return {"ok": True, "total": len(rows)}
+
+
+@app.delete("/api/admin/catalog", dependencies=[Depends(require_admin)])
+def delete_catalog():
+    con = db()
+    with con:
+        con.execute("DROP TABLE IF EXISTS discos")
+    con.close()
+    set_settings(filename="", uploaded_at="")
+    return {"ok": True}
 
 
 @app.put("/api/admin/code", dependencies=[Depends(require_admin)])
@@ -214,6 +249,22 @@ def change_code(body: Secret):
         raise HTTPException(400, "El código tiene que tener entre 4 y 64 caracteres.")
     set_settings(client_code=code)
     return {"ok": True, "client_code": code}
+
+
+@app.put("/api/admin/closes_at", dependencies=[Depends(require_admin)])
+def set_closes_at(body: Secret):
+    # value: fecha ISO con zona (el navegador manda UTC), o "" para quitar el cierre
+    value = body.value.strip()
+    if value:
+        try:
+            when = datetime.fromisoformat(value)
+        except ValueError:
+            raise HTTPException(400, "La fecha no es válida.")
+        if when.tzinfo is None:
+            raise HTTPException(400, "La fecha tiene que incluir la zona horaria.")
+        value = when.astimezone(timezone.utc).isoformat(timespec="minutes")
+    set_settings(closes_at=value)
+    return {"ok": True, "closes_at": value or None, "closed": is_closed()}
 
 
 # producción (Railway): un solo contenedor sirve también el front. En local lo hace nginx.

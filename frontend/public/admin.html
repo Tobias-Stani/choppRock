@@ -29,6 +29,13 @@
   .drop b { display: block; font-size: 1.05rem; margin-bottom: 4px; }
   .upload-actions { display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
 
+  .stack { display: grid; gap: 24px; align-content: start; }
+  .grid { align-items: start; }
+  .state { display: flex; align-items: center; gap: 10px; font-weight: 600; margin-bottom: 16px; }
+  .state::before { content: ""; flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--teal); }
+  .state.closed { color: var(--red); }
+  .state.closed::before { background: var(--red); }
+
   .code-now { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
   .code-now .sticker { font-size: 1.3rem; padding: 4px 14px; }
   .code-form { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -91,8 +98,23 @@
           <div class="upload-actions">
             <button id="upload-btn" class="btn" disabled>Cargar catálogo</button>
             <button id="reset-file" type="button" class="btn-text" hidden>Elegir otro archivo</button>
+            <button id="delete-catalog" type="button" class="btn-text danger" style="margin-left:auto" hidden>Eliminar catálogo</button>
           </div>
         </form>
+      </section>
+
+      <div class="stack">
+      <section class="panel" aria-labelledby="h-close">
+        <h2 id="h-close">Cierre de la lista</h2>
+        <p class="hint">Después de esta fecha los clientes no pueden entrar a la tienda. Vos sí.</p>
+        <p id="close-status" class="state" aria-live="polite"></p>
+        <form id="close-form" class="code-form" novalidate>
+          <label for="close-at" style="width:100%;margin:0">Fecha y hora de cierre</label>
+          <input id="close-at" class="field" type="datetime-local" aria-describedby="close-error">
+          <button class="btn">Guardar cierre</button>
+          <p id="close-error" class="error" role="alert" style="width:100%;margin:0"></p>
+        </form>
+        <button id="clear-close" class="btn-text" hidden>Quitar fecha de cierre</button>
       </section>
 
       <section class="panel" aria-labelledby="h-code">
@@ -111,6 +133,7 @@
           <p id="code-error" class="error" role="alert" style="width:100%;margin:0"></p>
         </form>
       </section>
+      </div>
     </div>
 
     <section class="panel" aria-labelledby="h-content">
@@ -143,15 +166,35 @@ let status = {}, file = null, page = 1, pages = 1;
 
 function showGate() { $("panel").hidden = true; $("gate").hidden = false; $("password").focus(); }
 
+// "2026-09-30T23:00+00:00" -> "2026-09-30T20:00" (valor para el input en hora local)
+function toLocalInput(iso) {
+  const d = new Date(iso);
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+}
+
+function renderClose() {
+  const s = status, el = $("close-status");
+  el.classList.toggle("closed", s.closed);
+  el.textContent = !s.closes_at ? "Sin fecha de cierre. La tienda queda abierta."
+    : s.closed ? `Cerrada desde el ${fmtDate(s.closes_at)}. Los clientes no pueden entrar.`
+    : `Abierta hasta el ${fmtDate(s.closes_at)} (cierra ${fromNow(s.closes_at)}).`;
+  $("close-at").value = s.closes_at ? toLocalInput(s.closes_at) : "";
+  $("clear-close").hidden = !s.closes_at;
+}
+
 function renderStatus() {
   const s = status;
   $("code-now").textContent = s.client_code;
+  renderClose();
+  $("delete-catalog").hidden = !s.total;
   if (!s.total) {
     $("summary").innerHTML = `<strong>Sin catálogo</strong><span class="hint">Todavía no se cargó ninguna lista. Los clientes ven la tienda vacía.</span>`;
     $("bars").innerHTML = "";
+    $("media").innerHTML = $("media").options[0].outerHTML;
     return;
   }
-  const when = s.uploaded_at ? new Date(s.uploaded_at).toLocaleString("es-AR", { dateStyle: "long", timeStyle: "short" }) : "";
+  const when = s.uploaded_at ? new Date(s.uploaded_at).toLocaleString("es-AR", { dateStyle: "long", timeStyle: "short", hourCycle: "h23" }) : "";
   $("summary").innerHTML = `<strong>${num(s.total)} discos</strong>
     <span class="hint">${num(s.genres)} géneros${s.filename ? `, de <b>${esc(s.filename)}</b>, cargado el ${esc(when)}` : ""}</span>`;
   $("bars").innerHTML = s.media.map(m => `
@@ -276,6 +319,49 @@ $("upload").onsubmit = async e => {
     Swal.fire({ icon: "error", title: "No se cargó el catálogo", text: `${err.message} La lista anterior sigue publicada.` });
   }
 };
+
+$("delete-catalog").onclick = async () => {
+  const ok = await confirmAction({
+    title: "¿Eliminar el catálogo?",
+    text: `Se borran los ${num(status.total)} discos. Los clientes van a ver la tienda vacía hasta que cargues otro Excel. No se puede deshacer.`,
+    confirm: "Eliminar catálogo", danger: true,
+  });
+  if (!ok) return;
+  try {
+    await api("/api/admin/catalog", { method: "DELETE" });
+    Swal.fire({ icon: "success", title: "Catálogo eliminado", text: "La tienda quedó vacía. Cuando tengas la lista nueva, cargala desde acá.", confirmButtonText: "Listo" });
+    page = 1;
+    await openPanel();
+  } catch (err) {
+    if (err.status === 401) return showGate();
+    Swal.fire({ icon: "error", title: "No se eliminó el catálogo", text: err.message });
+  }
+};
+
+// --- cierre de la lista ---
+$("close-at").oninput = () => { $("close-error").textContent = ""; $("close-at").removeAttribute("aria-invalid"); };
+async function saveClose(value, message) {
+  try {
+    const r = await api("/api/admin/closes_at", { method: "PUT", body: { value } });
+    Object.assign(status, { closes_at: r.closes_at, closed: r.closed });
+    renderClose();
+    toast.fire({ icon: "success", title: message });
+  } catch (err) {
+    if (err.status === 401) return showGate();
+    $("close-error").textContent = err.message;
+  }
+}
+$("close-form").onsubmit = async e => {
+  e.preventDefault();
+  const input = $("close-at");
+  if (!input.value) { $("close-error").textContent = "Elegí una fecha y hora."; input.setAttribute("aria-invalid", "true"); input.focus(); return; }
+  const when = new Date(input.value);
+  if (when <= new Date() && !await confirmAction({
+    title: "¿Cerrar la tienda ahora?", text: "Esa fecha ya pasó: los clientes no van a poder entrar desde este momento.", confirm: "Cerrar ahora", danger: true,
+  })) return;
+  saveClose(when.toISOString(), when <= new Date() ? "Tienda cerrada" : "Cierre guardado");
+};
+$("clear-close").onclick = () => saveClose("", "Fecha de cierre quitada: la tienda queda abierta");
 
 // --- código de acceso ---
 $("copy-code").onclick = async () => {

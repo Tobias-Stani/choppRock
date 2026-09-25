@@ -53,6 +53,8 @@
   .cart .actions { display: grid; gap: 8px; }
   .cart .hint { margin-top: 12px; }
 
+  .deadline { margin: -12px 0 24px; color: var(--sticker); font-weight: 700; }
+  #cart-deadline { font-weight: 600; color: var(--ink); }
   .cart-bar, .cart-close { display: none; }
   .loading { opacity: 0.5; transition: opacity 0.2s; }
 
@@ -79,8 +81,9 @@
 <section id="gate" class="gate" hidden>
   <div class="gate-box">
     <img class="logo" src="/logo.png" alt="Chopp & Rock Records, tienda de música">
-    <h1>Los discos que llegan este mes</h1>
-    <p class="lead">Elegí los que querés y mandá el pedido por WhatsApp. Te respondemos con la cotización.</p>
+    <h1 id="gate-title">Los discos que llegan este mes</h1>
+    <p id="gate-lead" class="lead">Elegí los que querés y mandá el pedido por WhatsApp. Te respondemos con la cotización.</p>
+    <p id="deadline" class="deadline" hidden></p>
     <form id="login" novalidate>
       <label for="code">Código de acceso</label>
       <input id="code" class="field" type="password" autocomplete="current-password" required aria-describedby="login-error">
@@ -135,6 +138,7 @@
           <button id="empty" class="btn-text danger">Vaciar pedido</button>
         </div>
         <p class="hint">Se abre WhatsApp con la lista escrita. La disquería te responde con la cotización.</p>
+        <p id="cart-deadline" class="hint" hidden></p>
       </aside>
     </div>
   </main>
@@ -203,7 +207,7 @@ async function search() {
     renderList();
     renderCart();
   } catch (e) {
-    if (e.status === 401) return showGate();
+    if (e.status === 401 || e.status === 403) return lockOut(e);
     $("status").textContent = e.message;
   } finally {
     $("list").classList.remove("loading");
@@ -212,7 +216,39 @@ async function search() {
 
 const message = () => "Hola! Quiero cotizar estos discos:\n\n" + cart.map(line).join("\n");
 
+let estado = {};  // { closes_at, closed }
+
 function showGate() { $("store").hidden = true; $("gate").hidden = false; $("code").focus(); }
+
+function showClosed() {
+  $("store").hidden = true;
+  $("gate").hidden = false;
+  $("login").hidden = $("deadline").hidden = true;
+  $("gate-title").textContent = "La lista de este mes ya cerró";
+  $("gate-lead").textContent = estado.closes_at
+    ? `Cerró el ${fmtDate(estado.closes_at)}. Cuando llegue la lista nueva vas a poder entrar de nuevo.`
+    : "Cuando llegue la lista nueva vas a poder entrar de nuevo.";
+}
+
+function renderDeadline() {
+  const open = estado.closes_at && !estado.closed;
+  $("deadline").hidden = $("cart-deadline").hidden = !open;
+  if (open) {
+    $("deadline").textContent = `Pedidos abiertos hasta el ${fmtDate(estado.closes_at)}.`;
+    $("cart-deadline").textContent = `Podés consultar hasta el ${fmtDate(estado.closes_at)}.`;
+  }
+}
+
+async function loadEstado() {
+  try { estado = await api("/api/estado"); } catch { estado = {}; }
+  renderDeadline();
+}
+
+// 401 = falta el código, 403 = la lista cerró
+async function lockOut(err) {
+  if (err.status === 403) { await loadEstado(); return showClosed(); }
+  estado.closed ? showClosed() : showGate();
+}
 
 async function openStore() {
   const f = await api("/api/filtros");
@@ -234,6 +270,7 @@ $("login").onsubmit = async e => {
     code.value = "";
     await openStore();
   } catch (err) {
+    if (err.status === 403) return lockOut(err);
     $("login-error").textContent = err.message;
     code.setAttribute("aria-invalid", "true");
     code.select();
@@ -279,7 +316,8 @@ $("copy").onclick = async () => {
 $("cart-bar").onclick = () => $("cart").classList.add("open");
 $("close-cart").onclick = () => $("cart").classList.remove("open");
 
-openStore().catch(e => e.status === 401 ? showGate() : Swal.fire({ icon: "error", title: "No se pudo cargar la tienda", text: e.message }));
+loadEstado().then(openStore).catch(e => e.status === 401 || e.status === 403 ? lockOut(e)
+  : Swal.fire({ icon: "error", title: "No se pudo cargar la tienda", text: e.message }));
 </script>
 </body>
 </html>
