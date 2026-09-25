@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Chopp & Rock</title>
+<link rel="icon" href="/logo.png">
+<link rel="stylesheet" href="/style.css">
+<style>
+  .filters { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+  .filters select { width: auto; min-width: 170px; padding: 10px 12px; }
+  .filters .hint { margin-left: auto; }
+  .search { flex: 1; min-width: 220px; max-width: 560px; position: relative; }
+  .search input { border-color: transparent; padding-right: 40px; }
+  .search kbd { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 6px; font: inherit; font-size: 0.8rem; }
+
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; align-items: start; }
+
+  .list { background: var(--white); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .row {
+    --cover: 96px;
+    display: grid; grid-template-columns: var(--cover) minmax(0, 2.2fr) minmax(0, 1.4fr) 132px; gap: 18px; align-items: center;
+    padding: 14px 18px; border-bottom: 1px solid var(--line);
+  }
+  /* tapa con la etiqueta de precio pegada en la esquina; sin tapa queda solo la etiqueta */
+  .sleeve { position: relative; width: var(--cover); }
+  .sleeve img { display: none; width: var(--cover); height: var(--cover); object-fit: cover; border-radius: 3px; box-shadow: 0 2px 6px rgba(19, 20, 24, 0.25); }
+  .sleeve.has-cover img { display: block; animation: show 0.25s ease-out; }
+  .sleeve.has-cover .sticker { position: absolute; left: -6px; bottom: -6px; }
+  @keyframes show { from { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .sleeve.has-cover img { animation: none; } }
+  .row:last-child { border-bottom: 0; }
+  .row.in { background: #fff6e0; }
+  .row .artist { font-weight: 700; }
+  .row .title { color: var(--ink-soft); }
+  .row .listen { display: inline-block; margin-top: 4px; font-size: 0.88rem; font-weight: 600; color: var(--teal-dark); }
+  .row .listen::before { content: "▶ "; font-size: 0.75em; }
+  .row .meta { font-size: 0.9rem; color: var(--muted); }
+  .row .meta b { color: var(--ink); font-weight: 600; }
+  .row .btn { width: 100%; }
+  .row.in .btn { background: var(--white); color: var(--green); border-color: var(--green); }
+
+  .empty { padding: 48px 24px; text-align: center; }
+  .empty h3 { margin-bottom: 8px; }
+
+  .pager { display: flex; gap: 12px; align-items: center; justify-content: center; margin-top: 20px; }
+
+  .cart { position: sticky; top: 88px; }
+  .cart header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .cart ul { list-style: none; margin: 0 0 16px; padding: 0; max-height: 46vh; overflow: auto; }
+  .cart li { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 10px 0; border-bottom: 1px dashed var(--line); font-size: 0.92rem; }
+  .cart li small { color: var(--muted); display: block; }
+  .cart .actions { display: grid; gap: 8px; }
+  .cart .hint { margin-top: 12px; }
+
+  .cart-bar, .cart-close { display: none; }
+  .loading { opacity: 0.5; transition: opacity 0.2s; }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    .row { --cover: 84px; grid-template-columns: var(--cover) 1fr; }
+    .row .sleeve { grid-row: span 2; align-self: start; }
+    .row .meta { grid-column: 2; }
+    .row .btn { grid-column: 1 / -1; }
+    .filters .hint { margin-left: 0; width: 100%; }
+    .cart { position: fixed; inset: auto 0 0 0; top: auto; border-radius: 14px 14px 0 0; max-height: 80vh; overflow: auto; z-index: 20; box-shadow: 0 -8px 30px rgba(22, 35, 63, 0.25); padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
+    .cart:not(.open) { display: none; }
+    .cart-close { display: inline; }
+    .cart-bar {
+      display: flex; position: fixed; inset: auto 12px calc(12px + env(safe-area-inset-bottom, 0px)) 12px; z-index: 15;
+      justify-content: space-between; box-shadow: 0 6px 20px rgba(22, 35, 63, 0.35);
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- ingreso -->
+<section id="gate" class="gate" hidden>
+  <div class="gate-box">
+    <img class="logo" src="/logo.png" alt="Chopp & Rock Records, tienda de música">
+    <h1>Los discos que llegan este mes</h1>
+    <p class="lead">Elegí los que querés y mandá el pedido por WhatsApp. Te respondemos con la cotización.</p>
+    <form id="login" novalidate>
+      <label for="code">Código de acceso</label>
+      <input id="code" class="field" type="password" autocomplete="current-password" required aria-describedby="login-error">
+      <p id="login-error" class="error" role="alert"></p>
+      <button class="btn">Entrar a la tienda</button>
+    </form>
+  </div>
+</section>
+
+<!-- tienda -->
+<div id="store" hidden>
+  <header class="topbar">
+    <a class="brand" href="/"><img src="/logo.png" alt=""><span>Chopp & Rock</span></a>
+    <div class="search">
+      <input id="q" class="field" type="search" placeholder="Buscar por artista, título o sello" aria-label="Buscar discos">
+      <kbd title="Atajo: tecla /">/</kbd>
+    </div>
+    <span class="spacer"></span>
+    <button id="logout" class="btn btn-outline btn-sm">Salir</button>
+  </header>
+
+  <main class="page">
+    <div class="filters">
+      <select id="media" class="field" aria-label="Formato"><option value="">Todos los formatos</option></select>
+      <select id="genre" class="field" aria-label="Género"><option value="">Todos los géneros</option></select>
+      <button id="clear" class="btn-text" hidden>Quitar filtros</button>
+      <p id="status" class="hint" aria-live="polite"></p>
+    </div>
+
+    <div class="layout">
+      <section>
+        <div id="list" class="list"></div>
+        <nav class="pager" aria-label="Páginas">
+          <button id="prev" class="btn btn-outline btn-sm">Anterior</button>
+          <span id="pageinfo" class="hint"></span>
+          <button id="next" class="btn btn-outline btn-sm">Siguiente</button>
+        </nav>
+      </section>
+
+      <aside id="cart" class="panel cart" aria-label="Tu pedido">
+        <header>
+          <h2>Tu pedido</h2>
+          <span id="count" class="sticker">0</span>
+          <span class="spacer" style="flex:1"></span>
+          <button id="close-cart" class="btn-text cart-close" aria-label="Cerrar pedido">Cerrar</button>
+        </header>
+        <ul id="cart-items"></ul>
+        <p id="cart-empty" class="hint">Todavía no agregaste discos. Buscá lo que te interese y tocá <b>Agregar</b>.</p>
+        <div class="actions">
+          <button id="wa" class="btn btn-whatsapp">Consultar cotización</button>
+          <button id="copy" class="btn btn-outline">Copiar lista</button>
+          <button id="empty" class="btn-text danger">Vaciar pedido</button>
+        </div>
+        <p class="hint">Se abre WhatsApp con la lista escrita. La disquería te responde con la cotización.</p>
+      </aside>
+    </div>
+  </main>
+
+  <button id="cart-bar" class="btn cart-bar">Ver pedido <span id="count-bar" class="sticker">0</span></button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+<script src="/common.js"></script>
+<script src="/covers.js"></script>
+<script>
+const WHATSAPP = "5491150416691";
+let page = 1, pages = 1, items = [], cart = [];
+try { cart = JSON.parse(localStorage.getItem("cart")) || []; } catch {}
+
+const fmt = d => [d.media, d.description].filter(Boolean).join(" ");
+const line = d => `#${d.id} - ${d.artist} – ${d.title} (${d.label}) [${fmt(d)}]`;
+const inCart = d => cart.some(c => c.id === d.id);
+
+function renderCart() {
+  try { localStorage.setItem("cart", JSON.stringify(cart)); } catch {}
+  $("count").textContent = $("count-bar").textContent = cart.length;
+  $("cart-empty").hidden = cart.length > 0;
+  $("wa").disabled = $("copy").disabled = !cart.length;
+  $("empty").hidden = !cart.length;
+  $("cart-items").innerHTML = cart.map((d, i) => `
+    <li><span><span class="sticker">#${d.id}</span> <b>${esc(d.artist)}</b><small>${esc(d.title)}, ${esc(fmt(d))}</small></span>
+    <button class="btn-text danger" data-rm="${i}" aria-label="Quitar ${esc(d.title)}">Quitar</button></li>`).join("");
+}
+
+function renderList() {
+  if (!items.length) {
+    const filtered = $("q").value || $("media").value || $("genre").value;
+    $("list").innerHTML = `<div class="empty">${filtered
+      ? `<h3>No encontramos discos con esa búsqueda</h3><p class="hint">Probá con menos palabras o quitá los filtros.</p>`
+      : `<h3>Todavía no hay catálogo cargado</h3><p class="hint">La disquería lo sube cuando llega la lista del mes.</p>`}</div>`;
+    return;
+  }
+  $("list").innerHTML = items.map((d, i) => {
+    const on = inCart(d);
+    return `<article class="row ${on ? "in" : ""}">
+      <div class="sleeve" data-sleeve="${d.id}"><img alt=""><span class="sticker">#${d.id}</span></div>
+      <div><div class="artist">${esc(d.artist)}</div><div class="title">${esc(d.title)}</div>
+        <a class="listen" href="https://www.youtube.com/results?search_query=${encodeURIComponent(cleanArtist(d.artist) + " " + cleanTitle(d.title))}" target="_blank" rel="noopener">Escuchar en YouTube</a></div>
+      <div class="meta"><b>${esc(fmt(d))}</b><br>${esc(d.label)}${d.genre ? ` — ${esc(d.genre)}` : ""}</div>
+      <button class="btn btn-sm" data-add="${i}" aria-pressed="${on}">${on ? "Agregado ✓" : "Agregar"}</button>
+    </article>`;
+  }).join("");
+  loadCovers(items);
+}
+
+async function search() {
+  const params = new URLSearchParams({ q: $("q").value, media: $("media").value, genre: $("genre").value, page });
+  $("list").classList.add("loading");
+  $("status").textContent = "Buscando…";
+  try {
+    const data = await api("/api/discos?" + params);
+    items = data.items;
+    pages = Math.max(1, Math.ceil(data.total / data.page_size));
+    const from = data.total ? (page - 1) * data.page_size + 1 : 0;
+    $("status").textContent = `Mostrando ${num(from)}–${num(from + items.length - 1 || 0)} de ${num(data.total)} discos`;
+    $("pageinfo").textContent = `Página ${page} de ${num(pages)}`;
+    $("prev").disabled = page <= 1;
+    $("next").disabled = page >= pages;
+    $("clear").hidden = !($("q").value || $("media").value || $("genre").value);
+    renderList();
+    renderCart();
+  } catch (e) {
+    if (e.status === 401) return showGate();
+    $("status").textContent = e.message;
+  } finally {
+    $("list").classList.remove("loading");
+  }
+}
+
+const message = () => "Hola! Quiero cotizar estos discos:\n\n" + cart.map(line).join("\n");
+
+function showGate() { $("store").hidden = true; $("gate").hidden = false; $("code").focus(); }
+
+async function openStore() {
+  const f = await api("/api/filtros");
+  for (const k of ["media", "genre"])
+    $(k).innerHTML = $(k).options[0].outerHTML + f[k].map(v => `<option>${esc(v)}</option>`).join("");
+  $("gate").hidden = true;
+  $("store").hidden = false;
+  renderCart();
+  search();
+}
+
+$("login").onsubmit = async e => {
+  e.preventDefault();
+  const btn = e.submitter, code = $("code");
+  if (!code.value.trim()) { $("login-error").textContent = "Escribí el código que te pasó la disquería."; code.setAttribute("aria-invalid", "true"); return; }
+  setBusy(btn, true, "Entrando…");
+  try {
+    await api("/api/login", { method: "POST", body: { value: code.value } });
+    code.value = "";
+    await openStore();
+  } catch (err) {
+    $("login-error").textContent = err.message;
+    code.setAttribute("aria-invalid", "true");
+    code.select();
+  } finally { setBusy(btn, false); }
+};
+$("code").oninput = () => { $("login-error").textContent = ""; $("code").removeAttribute("aria-invalid"); };
+
+$("logout").onclick = async () => { await api("/api/logout", { method: "POST" }); showGate(); };
+
+let t;
+$("q").oninput = () => { clearTimeout(t); t = setTimeout(() => { page = 1; search(); }, 300); };
+$("media").onchange = $("genre").onchange = () => { page = 1; search(); };
+$("clear").onclick = () => { $("q").value = $("media").value = $("genre").value = ""; page = 1; search(); };
+$("prev").onclick = () => { page--; search(); scrollTo({ top: 0 }); };
+$("next").onclick = () => { page++; search(); scrollTo({ top: 0 }); };
+
+$("list").onclick = e => {
+  const i = e.target.dataset.add;
+  if (i === undefined) return;
+  const d = items[i], at = cart.findIndex(c => c.id === d.id);
+  at >= 0 ? cart.splice(at, 1) : cart.push(d);
+  renderCart(); renderList();
+};
+$("cart-items").onclick = e => {
+  const i = e.target.dataset.rm;
+  if (i === undefined) return;
+  const [removed] = cart.splice(i, 1);
+  renderCart(); renderList();
+  // deshacer en lugar de confirmar: quitar es barato de revertir
+  Swal.fire({ toast: true, position: "bottom", timer: 4000, showConfirmButton: true, confirmButtonText: "Deshacer", text: `Quitaste ${removed.title}` })
+    .then(r => { if (r.isConfirmed) { cart.splice(i, 0, removed); renderCart(); renderList(); } });
+};
+$("empty").onclick = async () => {
+  if (await confirmAction({ title: "¿Vaciar el pedido?", text: `Se quitan los ${cart.length} discos que agregaste.`, confirm: "Vaciar pedido" })) {
+    cart = []; renderCart(); renderList();
+  }
+};
+$("wa").onclick = () => window.open(`https://wa.me/${WHATSAPP}?text=${encodeURIComponent(message())}`, "_blank");
+$("copy").onclick = async () => {
+  try { await navigator.clipboard.writeText(message()); toast.fire({ icon: "success", title: "Lista copiada" }); }
+  catch { toast.fire({ icon: "error", title: "No se pudo copiar. Usá el botón de WhatsApp." }); }
+};
+$("cart-bar").onclick = () => $("cart").classList.add("open");
+$("close-cart").onclick = () => $("cart").classList.remove("open");
+
+openStore().catch(e => e.status === 401 ? showGate() : Swal.fire({ icon: "error", title: "No se pudo cargar la tienda", text: e.message }));
+</script>
+</body>
+</html>

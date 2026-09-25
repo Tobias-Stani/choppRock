@@ -1,0 +1,27 @@
+services:
+  backend:
+    build: ./backend
+    # --reload para desarrollo; sacarlo en producción
+    command: uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      CLIENT_CODE: ${CLIENT_CODE:-rock}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      DB_PATH: /data/catalogo.db
+    volumes:
+      - ./backend:/app
+      - data:/data
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "${PORT:-8000}:80"
+    volumes:
+      # montado: los cambios en los HTML se ven con F5
+      - ./frontend/public:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  data:

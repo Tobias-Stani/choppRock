@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Administración – Chopp & Rock</title>
+<link rel="icon" href="/logo.png">
+<link rel="stylesheet" href="/style.css">
+<style>
+  .grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 24px; margin-bottom: 24px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .panel h2 { margin-bottom: 6px; }
+  .panel > .hint:first-of-type { margin-bottom: 20px; }
+
+  .summary { font-size: 1.05rem; margin-bottom: 18px; }
+  .summary strong { font-stretch: 75%; font-weight: 900; font-size: 2.4rem; display: block; line-height: 1.1; }
+  .bars { display: grid; gap: 8px; margin-bottom: 24px; }
+  .bar { display: grid; grid-template-columns: 90px 1fr 70px; gap: 10px; align-items: center; font-size: 0.9rem; }
+  .bar div { height: 10px; background: var(--paper); border-radius: 5px; overflow: hidden; }
+  .bar div span { display: block; height: 100%; background: var(--teal); }
+  .bar em { font-style: normal; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .drop {
+    border: 2px dashed #9ba3a8; border-radius: 12px; padding: 28px 20px; text-align: center; cursor: pointer;
+    background: var(--paper); transition: background 0.15s, border-color 0.15s;
+  }
+  .drop:hover, .drop.over { border-color: var(--teal); background: #e2f3f7; }
+  .drop.ready { border-style: solid; border-color: var(--green); background: #eaf5ef; }
+  .drop b { display: block; font-size: 1.05rem; margin-bottom: 4px; }
+  .upload-actions { display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+
+  .code-now { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+  .code-now .sticker { font-size: 1.3rem; padding: 4px 14px; }
+  .code-form { display: flex; gap: 10px; flex-wrap: wrap; }
+  .code-form .field { flex: 1; min-width: 180px; }
+
+  .table-tools { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0; align-items: center; }
+  .table-tools .field { max-width: 360px; }
+  .table-tools select { width: auto; }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { background: var(--paper); font-weight: 700; position: sticky; top: 0; }
+  td.wrap { white-space: normal; min-width: 180px; }
+  tr:last-child td { border-bottom: 0; }
+  .pager { display: flex; gap: 12px; align-items: center; justify-content: flex-end; margin-top: 12px; }
+</style>
+</head>
+<body>
+
+<!-- ingreso admin -->
+<section id="gate" class="gate" hidden>
+  <div class="gate-box">
+    <img class="logo" src="/logo.png" alt="Chopp & Rock Records, tienda de música">
+    <h1>Administración</h1>
+    <p class="lead">Cargá el catálogo del mes y manejá el código de acceso de los clientes.</p>
+    <form id="login" novalidate>
+      <label for="password">Contraseña de administrador</label>
+      <input id="password" class="field" type="password" autocomplete="current-password" required aria-describedby="login-error">
+      <p id="login-error" class="error" role="alert"></p>
+      <button class="btn">Entrar</button>
+    </form>
+  </div>
+</section>
+
+<!-- panel -->
+<div id="panel" hidden>
+  <header class="topbar">
+    <a class="brand" href="/admin"><img src="/logo.png" alt=""><span>Chopp & Rock</span></a>
+    <span class="hint" style="color:#b9bdc4">Administración</span>
+    <span class="spacer"></span>
+    <a class="btn btn-outline btn-sm" href="/" target="_blank" rel="noopener">Ver tienda</a>
+    <button id="logout" class="btn btn-outline btn-sm">Salir</button>
+  </header>
+
+  <main class="page">
+    <div class="grid">
+      <section class="panel" aria-labelledby="h-catalog">
+        <h2 id="h-catalog">Catálogo</h2>
+        <p class="hint">Subí el Excel que manda la disquería. Reemplaza la lista anterior completa.</p>
+
+        <div id="summary" class="summary" aria-live="polite"></div>
+        <div id="bars" class="bars"></div>
+
+        <form id="upload">
+          <input id="file" type="file" accept=".xlsx" hidden>
+          <div id="drop" class="drop" role="button" tabindex="0" aria-describedby="drop-hint">
+            <b id="drop-title">Arrastrá el Excel acá</b>
+            <span id="drop-hint" class="hint">o hacé clic para elegirlo. Solo archivos .xlsx.</span>
+          </div>
+          <div class="upload-actions">
+            <button id="upload-btn" class="btn" disabled>Cargar catálogo</button>
+            <button id="reset-file" type="button" class="btn-text" hidden>Elegir otro archivo</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel" aria-labelledby="h-code">
+        <h2 id="h-code">Código de acceso</h2>
+        <p class="hint">Es el código que usan los clientes para entrar a la tienda.</p>
+        <div class="code-now">
+          <span>Código actual</span>
+          <span id="code-now" class="sticker"></span>
+          <button id="copy-code" class="btn-text">Copiar</button>
+        </div>
+        <form id="code-form" class="code-form" novalidate>
+          <label for="new-code" style="width:100%;margin:0">Nuevo código</label>
+          <input id="new-code" class="field" minlength="4" maxlength="64" autocomplete="off" aria-describedby="code-error code-hint">
+          <button class="btn">Cambiar código</button>
+          <p id="code-hint" class="hint" style="width:100%">Mínimo 4 caracteres. Los clientes que ya entraron van a tener que ingresar el nuevo.</p>
+          <p id="code-error" class="error" role="alert" style="width:100%;margin:0"></p>
+        </form>
+      </section>
+    </div>
+
+    <section class="panel" aria-labelledby="h-content">
+      <h2 id="h-content">Lo que está cargado</h2>
+      <p class="hint">Así ven los clientes cada disco. El número es la fila del Excel.</p>
+      <div class="table-tools">
+        <input id="q" class="field" type="search" placeholder="Buscar artista, título o sello" aria-label="Buscar en el catálogo">
+        <select id="media" class="field" aria-label="Formato"><option value="">Todos los formatos</option></select>
+        <span id="table-status" class="hint" aria-live="polite"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>N.º</th><th>Artista</th><th>Título</th><th>Sello</th><th>Formato</th><th>Descripción</th><th>Género</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <nav class="pager" aria-label="Páginas">
+        <button id="prev" class="btn btn-outline btn-sm">Anterior</button>
+        <span id="pageinfo" class="hint"></span>
+        <button id="next" class="btn btn-outline btn-sm">Siguiente</button>
+      </nav>
+    </section>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+<script src="/common.js"></script>
+<script>
+let status = {}, file = null, page = 1, pages = 1;
+
+function showGate() { $("panel").hidden = true; $("gate").hidden = false; $("password").focus(); }
+
+function renderStatus() {
+  const s = status;
+  $("code-now").textContent = s.client_code;
+  if (!s.total) {
+    $("summary").innerHTML = `<strong>Sin catálogo</strong><span class="hint">Todavía no se cargó ninguna lista. Los clientes ven la tienda vacía.</span>`;
+    $("bars").innerHTML = "";
+    return;
+  }
+  const when = s.uploaded_at ? new Date(s.uploaded_at).toLocaleString("es-AR", { dateStyle: "long", timeStyle: "short" }) : "";
+  $("summary").innerHTML = `<strong>${num(s.total)} discos</strong>
+    <span class="hint">${num(s.genres)} géneros${s.filename ? `, de <b>${esc(s.filename)}</b>, cargado el ${esc(when)}` : ""}</span>`;
+  $("bars").innerHTML = s.media.map(m => `
+    <div class="bar"><span>${esc(m.media || "Sin formato")}</span>
+    <div><span style="width:${(m.n / s.total * 100).toFixed(1)}%"></span></div><em>${num(m.n)}</em></div>`).join("");
+  $("media").innerHTML = $("media").options[0].outerHTML + s.media.filter(m => m.media).map(m => `<option>${esc(m.media)}</option>`).join("");
+}
+
+async function loadTable() {
+  const params = new URLSearchParams({ q: $("q").value, media: $("media").value, page });
+  $("table-status").textContent = "Buscando…";
+  const data = await api("/api/discos?" + params);
+  pages = Math.max(1, Math.ceil(data.total / data.page_size));
+  $("table-status").textContent = `${num(data.total)} resultados`;
+  $("pageinfo").textContent = `Página ${page} de ${num(pages)}`;
+  $("prev").disabled = page <= 1;
+  $("next").disabled = page >= pages;
+  $("rows").innerHTML = data.items.length ? data.items.map(d => `<tr>
+    <td><span class="sticker">#${d.id}</span></td><td class="wrap">${esc(d.artist)}</td><td class="wrap">${esc(d.title)}</td>
+    <td>${esc(d.label)}</td><td>${esc(d.media)}</td><td>${esc(d.description)}</td><td>${esc(d.genre)}</td></tr>`).join("")
+    : `<tr><td colspan="7" class="hint" style="padding:24px;text-align:center">${status.total ? "Nada coincide con la búsqueda." : "Cargá un Excel para ver los discos acá."}</td></tr>`;
+}
+
+async function openPanel() {
+  status = await api("/api/admin/status");
+  $("gate").hidden = true;
+  $("panel").hidden = false;
+  renderStatus();
+  loadTable();
+}
+
+// --- ingreso ---
+$("login").onsubmit = async e => {
+  e.preventDefault();
+  const btn = e.submitter, pw = $("password");
+  if (!pw.value) { $("login-error").textContent = "Escribí la contraseña."; pw.setAttribute("aria-invalid", "true"); return; }
+  setBusy(btn, true, "Entrando…");
+  try {
+    await api("/api/admin/login", { method: "POST", body: { value: pw.value } });
+    pw.value = "";
+    await openPanel();
+  } catch (err) {
+    $("login-error").textContent = err.message;
+    pw.setAttribute("aria-invalid", "true");
+    pw.select();
+  } finally { setBusy(btn, false); }
+};
+$("password").oninput = () => { $("login-error").textContent = ""; $("password").removeAttribute("aria-invalid"); };
+$("logout").onclick = async () => { await api("/api/admin/logout", { method: "POST" }); showGate(); };
+
+// --- carga del Excel ---
+function pick(f) {
+  if (!f) return;
+  if (!f.name.toLowerCase().endsWith(".xlsx")) {
+    Swal.fire({ icon: "error", title: "Ese archivo no sirve", text: `"${f.name}" no es un Excel .xlsx. Si es .xls, abrilo en Excel y guardalo como .xlsx.` });
+    return;
+  }
+  file = f;
+  $("drop").classList.add("ready");
+  $("drop-title").textContent = f.name;
+  $("drop-hint").textContent = `${(f.size / 1024 / 1024).toFixed(1)} MB. Listo para cargar.`;
+  $("upload-btn").disabled = false;
+  $("reset-file").hidden = false;
+}
+function resetFile() {
+  file = null; $("file").value = "";
+  $("drop").classList.remove("ready");
+  $("drop-title").textContent = "Arrastrá el Excel acá";
+  $("drop-hint").textContent = "o hacé clic para elegirlo. Solo archivos .xlsx.";
+  $("upload-btn").disabled = true;
+  $("reset-file").hidden = true;
+}
+$("drop").onclick = () => $("file").click();
+$("drop").onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } };
+$("file").onchange = e => pick(e.target.files[0]);
+$("drop").ondragover = e => { e.preventDefault(); $("drop").classList.add("over"); };
+$("drop").ondragleave = () => $("drop").classList.remove("over");
+$("drop").ondrop = e => { e.preventDefault(); $("drop").classList.remove("over"); pick(e.dataTransfer.files[0]); };
+$("reset-file").onclick = resetFile;
+
+function uploadWithProgress(f) {
+  // XHR en vez de fetch para poder mostrar el progreso de subida
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest(), form = new FormData();
+    form.append("file", f);
+    xhr.open("POST", "/api/admin/upload");
+    xhr.upload.onprogress = e => {
+      if (!e.lengthComputable) return;
+      const pct = Math.round(e.loaded / e.total * 100);
+      Swal.update({ text: pct < 100 ? `Subiendo archivo… ${pct}%` : "Leyendo el Excel y guardando los discos…" });
+      Swal.showLoading();
+    };
+    xhr.onload = () => {
+      const data = JSON.parse(xhr.responseText || "{}");
+      xhr.status < 300 ? resolve(data) : reject(Object.assign(new Error(data.detail || "Error al cargar."), { status: xhr.status }));
+    };
+    xhr.onerror = () => reject(new Error("Se cortó la conexión. Probá de nuevo."));
+    xhr.send(form);
+  });
+}
+
+$("upload").onsubmit = async e => {
+  e.preventDefault();
+  if (!file) return;
+  const ok = await confirmAction({
+    title: "¿Reemplazar el catálogo?",
+    text: status.total
+      ? `Se borran los ${num(status.total)} discos actuales y se cargan los de "${file.name}".`
+      : `Se cargan los discos de "${file.name}".`,
+    confirm: "Cargar catálogo",
+  });
+  if (!ok) return;
+  Swal.fire({ title: "Cargando catálogo", text: "Subiendo archivo…", allowOutsideClick: false, allowEscapeKey: false, didOpen: () => Swal.showLoading() });
+  try {
+    const r = await uploadWithProgress(file);
+    await Swal.fire({ icon: "success", title: "Catálogo cargado", html: `<b>${num(r.total)} discos</b> ya están disponibles en la tienda.`, confirmButtonText: "Listo" });
+    resetFile();
+    page = 1;
+    await openPanel();
+  } catch (err) {
+    if (err.status === 401) { Swal.close(); return showGate(); }
+    Swal.fire({ icon: "error", title: "No se cargó el catálogo", text: `${err.message} La lista anterior sigue publicada.` });
+  }
+};
+
+// --- código de acceso ---
+$("copy-code").onclick = async () => {
+  try { await navigator.clipboard.writeText(status.client_code); toast.fire({ icon: "success", title: "Código copiado" }); }
+  catch { toast.fire({ icon: "error", title: "No se pudo copiar" }); }
+};
+$("new-code").oninput = () => { $("code-error").textContent = ""; $("new-code").removeAttribute("aria-invalid"); };
+$("code-form").onsubmit = async e => {
+  e.preventDefault();
+  const input = $("new-code"), code = input.value.trim();
+  const fail = msg => { $("code-error").textContent = msg; input.setAttribute("aria-invalid", "true"); input.focus(); };
+  if (code.length < 4) return fail("El código tiene que tener al menos 4 caracteres.");
+  if (code === status.client_code) return fail("Ese ya es el código actual.");
+  const ok = await confirmAction({ title: "¿Cambiar el código?", text: `El nuevo código va a ser "${code}". Los clientes que ya entraron van a tener que ingresarlo de nuevo.`, confirm: "Cambiar código" });
+  if (!ok) return;
+  try {
+    const r = await api("/api/admin/code", { method: "PUT", body: { value: code } });
+    status.client_code = r.client_code;
+    input.value = "";
+    renderStatus();
+    Swal.fire({ icon: "success", title: "Código cambiado", html: `Pasales a tus clientes el código nuevo: <span class="sticker">${esc(r.client_code)}</span>`, confirmButtonText: "Listo" });
+  } catch (err) {
+    if (err.status === 401) return showGate();
+    fail(err.message);
+  }
+};
+
+// --- tabla ---
+let t;
+$("q").oninput = () => { clearTimeout(t); t = setTimeout(() => { page = 1; loadTable(); }, 300); };
+$("media").onchange = () => { page = 1; loadTable(); };
+$("prev").onclick = () => { page--; loadTable(); };
+$("next").onclick = () => { page++; loadTable(); };
+
+openPanel().catch(e => e.status === 401 ? showGate() : Swal.fire({ icon: "error", title: "No se pudo abrir el panel", text: e.message }));
+</script>
+</body>
+</html>
