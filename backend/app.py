@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import Cookie, Depends, FastAPI, File, HTTPException, Response, UploadFile
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from openpyxl import load_workbook
 from pydantic import BaseModel
 
@@ -212,6 +214,15 @@ def change_code(body: Secret):
         raise HTTPException(400, "El código tiene que tener entre 4 y 64 caracteres.")
     set_settings(client_code=code)
     return {"ok": True, "client_code": code}
+
+
+# producción (Railway): un solo contenedor sirve también el front. En local lo hace nginx.
+if STATIC_DIR := os.environ.get("STATIC_DIR"):
+    @app.get("/admin")
+    def admin_page():
+        return FileResponse(Path(STATIC_DIR) / "admin.html")
+
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True))
 
 
 if __name__ == "__main__":
