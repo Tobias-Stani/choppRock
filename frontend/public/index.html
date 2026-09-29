@@ -8,7 +8,13 @@
 <link rel="stylesheet" href="/style.css">
 <style>
   .filters { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
-  .filters select { width: auto; min-width: 170px; padding: 10px 12px; }
+  #clear { padding-inline: 0; }
+  /* los tres filtros miden lo mismo, sin importar el largo de las opciones */
+  .filters select, .filters .label-filter { flex: 0 0 220px; width: 220px; height: 46px; padding: 0 12px; text-overflow: ellipsis; }
+  @media (max-width: 900px) {
+    .filters select, .filters .label-filter { flex: 1 1 100%; width: 100%; }
+    .topbar .search { order: 3; flex: 1 1 100%; max-width: none; }
+  }
   .filters .hint { margin-left: auto; }
   .search { flex: 1; min-width: 220px; max-width: 560px; position: relative; }
   .search input { border-color: transparent; padding-right: 40px; }
@@ -109,6 +115,8 @@
     <div class="filters">
       <select id="media" class="field" aria-label="Formato"><option value="">Todos los formatos</option></select>
       <select id="genre" class="field" aria-label="Género"><option value="">Todos los géneros</option></select>
+      <input id="label" class="field label-filter" type="search" list="labels" placeholder="Sello: escribí para buscar" aria-label="Filtrar por sello" autocomplete="off" spellcheck="false">
+      <datalist id="labels"></datalist>
       <button id="clear" class="btn-text" hidden>Quitar filtros</button>
       <p id="status" class="hint" aria-live="polite"></p>
     </div>
@@ -157,6 +165,7 @@ try { cart = JSON.parse(localStorage.getItem("cart")) || []; } catch {}
 const fmt = d => [d.media, d.description].filter(Boolean).join(" ");
 const line = d => `#${d.id} - ${d.artist} – ${d.title} (${d.label}) [${fmt(d)}]`;
 const inCart = d => cart.some(c => c.id === d.id);
+const hasFilters = () => ["q", "media", "genre", "label"].some(id => $(id).value.trim());
 
 function renderCart() {
   try { localStorage.setItem("cart", JSON.stringify(cart)); } catch {}
@@ -171,7 +180,7 @@ function renderCart() {
 
 function renderList() {
   if (!items.length) {
-    const filtered = $("q").value || $("media").value || $("genre").value;
+    const filtered = hasFilters();
     $("list").innerHTML = `<div class="empty">${filtered
       ? `<h3>No encontramos discos con esa búsqueda</h3><p class="hint">Probá con menos palabras o quitá los filtros.</p>`
       : `<h3>Todavía no hay catálogo cargado</h3><p class="hint">La disquería lo sube cuando llega la lista del mes.</p>`}</div>`;
@@ -191,7 +200,7 @@ function renderList() {
 }
 
 async function search() {
-  const params = new URLSearchParams({ q: $("q").value, media: $("media").value, genre: $("genre").value, page });
+  const params = new URLSearchParams({ q: $("q").value, media: $("media").value, genre: $("genre").value, label: $("label").value, page });
   $("list").classList.add("loading");
   $("status").textContent = "Buscando…";
   try {
@@ -203,7 +212,7 @@ async function search() {
     $("pageinfo").textContent = `Página ${page} de ${num(pages)}`;
     $("prev").disabled = page <= 1;
     $("next").disabled = page >= pages;
-    $("clear").hidden = !($("q").value || $("media").value || $("genre").value);
+    $("clear").hidden = !hasFilters();
     renderList();
     renderCart();
   } catch (e) {
@@ -254,6 +263,7 @@ async function openStore() {
   const f = await api("/api/filtros");
   for (const k of ["media", "genre"])
     $(k).innerHTML = $(k).options[0].outerHTML + f[k].map(v => `<option>${esc(v)}</option>`).join("");
+  $("labels").innerHTML = f.label.map(v => `<option value="${esc(v)}">`).join("");
   $("gate").hidden = true;
   $("store").hidden = false;
   renderCart();
@@ -282,8 +292,9 @@ $("logout").onclick = async () => { await api("/api/logout", { method: "POST" })
 
 let t;
 $("q").oninput = () => { clearTimeout(t); t = setTimeout(() => { page = 1; search(); }, 300); };
+$("label").oninput = $("q").oninput;  // mismo debounce que el buscador
 $("media").onchange = $("genre").onchange = () => { page = 1; search(); };
-$("clear").onclick = () => { $("q").value = $("media").value = $("genre").value = ""; page = 1; search(); };
+$("clear").onclick = () => { $("q").value = $("media").value = $("genre").value = $("label").value = ""; page = 1; search(); };
 $("prev").onclick = () => { page--; search(); scrollTo({ top: 0 }); };
 $("next").onclick = () => { page++; search(); scrollTo({ top: 0 }); };
 

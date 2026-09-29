@@ -157,16 +157,16 @@ def logout(response: Response):
 @app.get("/api/filtros", dependencies=[Depends(require_client)])
 def filtros():
     if not has_catalog():
-        return {"media": [], "genre": []}
+        return {"media": [], "genre": [], "label": []}
     con = db()
     res = {c: [r[0] for r in con.execute(f"SELECT DISTINCT {c} FROM discos WHERE {c} != '' ORDER BY {c}")]
-           for c in ("media", "genre")}
+           for c in ("media", "genre", "label")}
     con.close()
     return res
 
 
 @app.get("/api/discos", dependencies=[Depends(require_client)])
-def discos(q: str = "", media: str = "", genre: str = "", page: int = 1):
+def discos(q: str = "", media: str = "", genre: str = "", label: str = "", page: int = 1):
     if not has_catalog():
         return {"total": 0, "items": [], "page_size": PAGE_SIZE}
     where, params = [], []
@@ -179,6 +179,9 @@ def discos(q: str = "", media: str = "", genre: str = "", page: int = 1):
         where.append("media = ?"); params.append(media)
     if genre:
         where.append("genre = ?"); params.append(genre)
+    if label.strip():
+        # parcial: "beggars" encuentra "Beggars Banquet" sin tener que elegirlo de la lista
+        where.append("label LIKE ?"); params.append(f"%{label.strip()}%")
     sql_where = f"WHERE {' AND '.join(where)}" if where else ""
     con = db()
     total = con.execute(f"SELECT COUNT(*) FROM discos {sql_where}", params).fetchone()[0]
